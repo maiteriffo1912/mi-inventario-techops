@@ -1,82 +1,89 @@
 import streamlit as st
 import pandas as pd
+import io
 
-st.set_page_config(page_title="Tech Ops Inventory Report", layout="wide")
+# Configuración visual del reporte
+st.set_page_config(page_title="Reporte Tech Ops", layout="wide")
 
-st.title("📋 Reporte Profesional de Inventario Tech Ops")
+st.title("📋 Reporte Profesional de Auditoría - Tech Ops")
 st.markdown("---")
 
-# Subida de archivos
+# Función para asignar estados y colores basados en las reglas del usuario
+def procesar_inventario(df_rep, df_maint):
+    # Unir las tablas por el nombre del equipo
+    df_merged = pd.merge(df_rep, df_maint[['Equipos', 'Proxima mantención', 'Ultima mantención']], 
+                         left_on='Equipos', right_on='Equipos', how='left')
+    
+    # Identificar duplicados en la columna de códigos (Verde Azulado)
+    codigos_repetidos = df_merged[df_merged['codigos'].duplicated(keep=False) & 
+                                  (df_merged['codigos'].notna()) & 
+                                  (df_merged['codigos'] != 'SIN CODIGO')]['codigos'].unique()
+
+    def clasificar(row):
+        obs = str(row.get('Unnamed: 2', '')).lower()
+        cod = str(row['codigos']).upper()
+        
+        if 'baja' in obs:
+            return 'DE BAJA (AZUL)'
+        if 'sin codigo' in cod or 'nan' in str(cod).lower():
+            return 'SIN CÓDIGO (NARANJO)'
+        if 'etiquetado como' in obs or 'pertenece a otro' in obs:
+            return 'CÓDIGO NO COINCIDE (VERDE)'
+        if row['codigos'] in codigos_repetidos:
+            return 'CÓDIGO REPETIDO (VERDE AZULADO)'
+        return 'COINCIDE (ROSADO)'
+
+    df_merged['Estado Auditado'] = df_merged.apply(clasificar, axis=1)
+    return df_merged
+
+# Carga de archivos
 col1, col2 = st.columns(2)
 with col1:
-    file_inv = st.file_uploader("Subir Hoja 'Repetidos'", type="csv")
+    file_rep = st.file_uploader("Archivo 'Repetidos' (CSV)", type="csv")
 with col2:
-    file_man = st.file_uploader("Subir 'Hoja 2' (Mantenciones)", type="csv")
+    file_maint = st.file_uploader("Archivo 'Hoja 2' (CSV)", type="csv")
 
-if file_inv and file_man:
-    try:
-        # Carga de datos
-        df_inv = pd.read_csv(file_inv, skiprows=9)
-        df_man = pd.read_csv(file_man, skiprows=3)
+if file_rep and file_maint:
+    # Leer archivos saltando encabezados basura
+    df_rep = pd.read_csv(file_rep, skiprows=8)
+    df_maint = pd.read_csv(file_maint, skiprows=3)
 
-        # Limpieza inicial
-        df_inv.columns = ['Equipo', 'Codigo', 'Observaciones']
-        df_man = df_man[['Equipos', 'Proxima mantención', 'Ultima mantención']].rename(columns={'Equipos': 'Equipo'})
+    # Procesamiento
+    reporte_final = procesar_inventario(df_rep, df_maint)
 
-        # Cruzar información
-        df_final = pd.merge(df_inv, df_man, on='Equipo', how='left')
+    # --- DISEÑO DEL REPORTE PARA JEFATURA ---
+    st.header("1. Resumen Ejecutivo")
+    
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Óptimos (Rosado)", len(reporte_final[reporte_final['Estado Auditado'] == 'COINCIDE (ROSADO)']))
+    m2.metric("Duplicados", len(reporte_final[reporte_final['Estado Auditado'] == 'CÓDIGO REPETIDO (VERDE AZULADO)']))
+    m3.metric("No Coincide", len(reporte_final[reporte_final['Estado Auditado'] == 'CÓDIGO NO COINCIDE (VERDE)']))
+    m4.metric("Sin Código", len(reporte_final[reporte_final['Estado Auditado'] == 'SIN CÓDIGO (NARANJO)']))
+    m5.metric("De Baja", len(reporte_final[reporte_final['Estado Auditado'] == 'DE BAJA (AZUL)']))
 
-        # Lógica de estados según tus instrucciones
-        def asignar_estado(row):
-            obs = str(row['Observaciones']).lower()
-            cod = str(row['Codigo']).upper()
-            
-            if 'baja' in obs:
-                return 'DE BAJA (AZUL)'
-            if 'sin codigo' in cod or 'nan' in str(cod).lower():
-                return 'SIN CÓDIGO (NARANJO)'
-            if 'etiquetado como' in obs or 'pertenece a otro' in obs:
-                return 'CÓDIGO NO COINCIDE (VERDE)'
-            return 'VALOR PREDETERMINADO'
+    st.markdown("---")
+    st.header("2. Detalle de Equipos y Mantenciones")
 
-        df_final['Estado'] = df_final.apply(asignar_estado, axis=1)
+    # Estilo de celdas
+    def color_rows(val):
+        color_map = {
+            'COINCIDE (ROSADO)': 'background-color: #f8bbd0',
+            'CÓDIGO REPETIDO (VERDE AZULADO)': 'background-color: #80cbc4',
+            'CÓDIGO NO COINCIDE (VERDE)': 'background-color: #c8e6c9',
+            'SIN CÓDIGO (NARANJO)': 'background-color: #ffe0b2',
+            'DE BAJA (AZUL)': 'background-color: #bbdefb'
+        }
+        return color_map.get(val, '')
 
-        # Identificar Duplicados (VERDE AZULADO)
-        # Buscamos códigos que se repiten en la lista
-        codigos_limpios = df_final[df_final['Codigo'].notna() & (df_final['Codigo'] != 'SIN CODIGO')]
-        duplicados = codigos_limpios[codigos_limpios.duplicated('Codigo', keep=False)]['Codigo'].unique()
-        
-        df_final.loc[df_final['Codigo'].isin(duplicados), 'Estado'] = 'CÓDIGO REPETIDO (VERDE AZULADO)'
-        
-        # El resto que no entró en categorías críticas es ROSADO
-        df_final.loc[df_final['Estado'] == 'VALOR PREDETERMINADO', 'Estado'] = 'COINCIDE (ROSADO)'
+    # Mostrar tabla profesional
+    st.dataframe(reporte_final.style.applymap(color_rows, subset=['Estado Auditado']), use_container_width=True)
 
-        # --- REPORTE PARA EL JEFE ---
-        st.subheader("📊 Resumen Ejecutivo para Jefatura")
-        
-        metrica1, metrica2, metrica3, metrica4 = st.columns(4)
-        metrica1.metric("Total Equipos", len(df_final))
-        metrica2.metric("Sin Código", len(df_final[df_final['Estado'] == 'SIN CÓDIGO (NARANJO)']))
-        metrica3.metric("Duplicados", len(duplicados))
-        metrica4.metric("De Baja", len(df_final[df_final['Estado'] == 'DE BAJA (AZUL)']))
-
-        # Función para colorear la tabla
-        def color_estilo(val):
-            color_map = {
-                'COINCIDE (ROSADO)': 'background-color: #f8bbd0; color: black',
-                'CÓDIGO REPETIDO (VERDE AZULADO)': 'background-color: #80cbc4; color: black',
-                'CÓDIGO NO COINCIDE (VERDE)': 'background-color: #c8e6c9; color: black',
-                'SIN CÓDIGO (NARANJO)': 'background-color: #ffe0b2; color: black',
-                'DE BAJA (AZUL)': 'background-color: #bbdefb; color: black'
-            }
-            return color_map.get(val, '')
-
-        st.markdown("### Detalle de Inventario Auditado")
-        st.dataframe(df_final.style.applymap(color_estilo, subset=['Estado']), use_container_width=True)
-
-        # Botón de Descarga
-        csv_data = df_final.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Descargar Reporte Final para Excel", data=csv_data, file_name="Reporte_Final_TechOps.csv")
-
-    except Exception as e:
-        st.error(f"Error en el proceso: {e}")
+    # Botón de descarga
+    buffer = io.BytesIO()
+    reporte_final.to_excel(buffer, index=False)
+    st.download_button(
+        label="📥 Descargar Reporte Profesional (Excel)",
+        data=buffer,
+        file_name="Reporte_Inventario_TechOps.xlsx",
+        mime="application/vnd.ms-excel"
+    )
