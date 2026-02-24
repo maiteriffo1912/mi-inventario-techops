@@ -1,56 +1,76 @@
+import streamlit as st
 import pandas as pd
-import numpy as np
 
-# 1. Cargar los archivos CSV (asegúrate de que los nombres coincidan con tus archivos)
-# Omitimos las primeras filas de 'repetidos.csv' que contienen la leyenda de colores
-df_inventario = pd.read_csv('Mantencion equipos tech ops (1).xlsx - repetidos.csv', skiprows=10) 
-df_mantencion = pd.read_csv('Mantencion equipos tech ops (1).xlsx - Hoja2.csv', skiprows=3)
+# Configuración de la página
+st.set_page_config(page_title="Tech Ops Inventory", layout="wide")
 
-# Limpiar nombres de columnas para evitar errores por espacios extra
-df_inventario.columns = ['Equipos', 'Codigos', 'Observaciones']
-df_mantencion.columns = ['Equipos', 'Codigos', 'Proxima mantencion', 'Ultima mantencion']
+st.title("📊 Sistema de Inventario Tech Ops")
+st.markdown("Sube los archivos CSV para generar el reporte automático.")
 
-# 2. Unir ambas tablas usando el nombre del equipo como referencia principal
-df_master = pd.merge(df_inventario, df_mantencion, on='Equipos', how='left')
+# 1. Subida de archivos en la interfaz
+col1, col2 = st.columns(2)
+with col1:
+    file_inv = st.file_uploader("Subir archivo 'Repetidos' (CSV)", type="csv")
+with col2:
+    file_man = st.file_uploader("Subir archivo 'Hoja 2' (CSV)", type="csv")
 
-# 3. Función para determinar el Estado (Simulando tus colores)
-def determinar_estado(row):
-    codigo = str(row['Codigos_x']).strip().upper()
-    obs = str(row['Observaciones']).strip().lower()
-    
-    # Azul: De baja (Asumiendo que lo anotas en la observación)
-    if 'baja' in obs:
-        return 'De Baja (Azul)'
-    
-    # Naranjo: Sin código
-    if codigo == 'SIN CODIGO' or codigo == 'NAN':
-        return 'Sin Código (Naranjo)'
-    
-    # Verde: Inconsistencia (etiquetado diferente)
-    if 'etiquetado como' in obs or 'pertenece a otro' in obs:
-        return 'No Coincide (Verde)'
-    
-    return 'Por Evaluar'
+if file_inv and file_man:
+    try:
+        # 2. Carga de datos con los saltos de línea correctos según tus archivos
+        # skiprows=9 para repetidos porque la tabla empieza en la fila 10
+        df_inventario = pd.read_csv(file_inv, skiprows=9) 
+        # skiprows=3 para Hoja2 porque la tabla empieza en la fila 4
+        df_mantencion = pd.read_csv(file_man, skiprows=3)
 
-# Aplicar la función para crear la columna de Estado
-df_master['Estado_Sugerido'] = df_master.apply(determinar_estado, axis=1)
+        # Limpiar nombres de columnas (basado en tus archivos reales)
+        df_inventario.columns = ['Equipos', 'Codigos', 'Observaciones']
+        df_mantencion.columns = ['Equipos', 'Codigos_M', 'Proxima mantencion', 'Ultima mantencion', 'Extra']
 
-# 4. Detectar Duplicados (Verde Azulado)
-# Marcamos como duplicados aquellos códigos que aparecen más de una vez y no son "SIN CODIGO"
-codigos_validos = df_master[df_master['Codigos_x'] != 'SIN CODIGO']
-duplicados = codigos_validos[codigos_validos.duplicated(subset=['Codigos_x'], keep=False)]['Codigos_x'].unique()
+        # 3. Unir tablas
+        df_master = pd.merge(df_inventario, df_mantencion[['Equipos', 'Proxima mantencion', 'Ultima mantencion']], on='Equipos', how='left')
 
-df_master.loc[df_master['Codigos_x'].isin(duplicados), 'Estado_Sugerido'] = 'Código Repetido (Verde Azulado)'
+        # 4. Función de lógica de estados (tus colores)
+        def determinar_estado(row):
+            codigo = str(row['Codigos']).strip().upper()
+            obs = str(row['Observaciones']).strip().lower()
+            
+            if 'baja' in obs:
+                return 'De Baja (Azul)'
+            if codigo == 'SIN CODIGO' or codigo == 'NAN':
+                return 'Sin Código (Naranjo)'
+            if 'etiquetado como' in obs or 'pertenece a otro' in obs:
+                return 'No Coincide (Verde)'
+            return 'Óptimo (Rosa)'
 
-# Asignar 'Óptimo (Rosa)' a los que pasaron todas las pruebas y no tienen problemas
-df_master.loc[df_master['Estado_Sugerido'] == 'Por Evaluar', 'Estado_Sugerido'] = 'Óptimo (Rosa)'
+        df_master['Estado_Sugerido'] = df_master.apply(determinar_estado, axis=1)
 
-# 5. Limpieza final de columnas
-df_master = df_master[['Equipos', 'Codigos_x', 'Estado_Sugerido', 'Proxima mantencion', 'Ultima mantencion', 'Observaciones']]
-df_master.rename(columns={'Codigos_x': 'Codigo'}, inplace=True)
+        # 5. Detectar Duplicados (Verde Azulado)
+        codigos_validos = df_master[df_master['Codigos'] != 'SIN CODIGO']
+        duplicados = codigos_validos[codigos_validos.duplicated(subset=['Codigos'], keep=False)]['Codigos'].unique()
+        df_master.loc[df_master['Codigos'].isin(duplicados), 'Estado_Sugerido'] = 'Código Repetido (Verde Azulado)'
 
-# 6. Exportar el resultado a un nuevo archivo Excel
-nombre_archivo_salida = 'Reporte_Auditoria_Tech_Ops.xlsx'
-df_master.to_excel(nombre_archivo_salida, index=False)
+        # 6. Aplicar Colores Visuales para la Web
+        def style_estado(val):
+            color_map = {
+                'Óptimo (Rosa)': 'background-color: #fce4ec; color: black;',
+                'Código Repetido (Verde Azulado)': 'background-color: #e0f2f1; color: black;',
+                'No Coincide (Verde)': 'background-color: #e8f5e9; color: black;',
+                'Sin Código (Naranjo)': 'background-color: #fff3e0; color: black;',
+                'De Baja (Azul)': 'background-color: #e3f2fd; color: black;'
+            }
+            return color_map.get(val, '')
 
-print(f"¡Reporte generado con éxito! Revisa el archivo: {nombre_archivo_salida}")
+        # Mostrar Tabla
+        st.subheader("📋 Reporte Consolidado")
+        st.dataframe(df_master.style.applymap(style_estado, subset=['Estado_Sugerido']), use_container_width=True)
+
+        # Botón para descargar el resultado
+        csv = df_master.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Descargar Reporte en CSV", data=csv, file_name="Reporte_TechOps.csv", mime="text/csv")
+
+    except Exception as e:
+        st.error(f"Hubo un error procesando los archivos: {e}")
+        st.info("Asegúrate de subir los archivos correctos que mostraste anteriormente.")
+
+else:
+    st.warning("Esperando que se suban ambos archivos para procesar...")
