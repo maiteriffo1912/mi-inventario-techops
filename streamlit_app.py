@@ -1,66 +1,56 @@
+import streamlit as st
 import pandas as pd
-from openpyxl.styles import PatternFill
-from openpyxl import Workbook
+from io import BytesIO
 
-# 1. BASE DE DATOS INTEGRADA (Extraída de tus archivos subidos)
-data = {
-    'Equipo': [
-        'Agitador Magnetico (16 posiciones)', 'Balanza (max 100kg)', 'Horno de secado', 
-        'Campana de extracción', 'Balanza Analitica', 'Medidor NO', 'Balanza digital (30kg)',
-        'Anemómetro', 'Anemómetro', 'Multiparametro portatil', 'Alzador electrico', 
-        'Hidrolavadora GHP200', 'Balanza Digital (30Kg)', 'Anemometro (198)'
-    ],
-    'Codigo_Sistema': [
-        'EQ-CB-023', 'EQ-CB-217', 'EQ-CB-066', 'EQ-CB-092', 'EQ-CB-021', 
-        'EQ-LIX-010', 'EQ-CB-243', 'EQ-CB-254', 'EQ-CB-255', 'SIN CODIGO', 
-        'SIN CODIGO', 'EQ-CB-258', 'EQ-CB-124', 'EQ-CB-198'
-    ],
-    'Observacion_Auditoria': [
-        'Código coincide', 'Código coincide', 'Código coincide', 'Código coincide', 
-        'EQUIPO DE BAJA', 'ETIQUETADO COMO EQ-CB-152 (ERROR)', 'CÓDIGO REPETIDO', 
-        'CÓDIGO REPETIDO', 'CÓDIGO REPETIDO', 'FALTA CODIFICAR (REF EQ-CB-221)', 
-        'FALTA CODIFICAR', 'Sin fecha de mantención', 'EQUIPO DE BAJA', 'Sin fecha de mantención'
-    ]
-}
+st.set_page_config(page_title="Reporte Tech Ops Final", layout="wide")
 
-df = pd.DataFrame(data)
+st.title("📊 Reporte Consolidado de Inventario Tech Ops")
+st.info("Este reporte ha sido generado automáticamente cruzando la información de mantenimiento y duplicados.")
 
-# 2. ASIGNACIÓN DE ESTADOS PARA EL REPORTE
-def definir_estado_final(row):
-    obs = str(row['Observacion_Auditoria']).upper()
-    cod = str(row['Codigo_Sistema']).upper()
+# --- 1. BASE DE DATOS INTEGRADA (Ya no necesitas subir archivos) ---
+datos_inventario = [
+    ["Agitador Magnetico (16 posiciones)", "EQ-CB-023", "2026-02-25", "COINCIDE (ROSADO)", ""],
+    ["Balanza (max 100kg)", "EQ-CB-217", "2026-04-04", "COINCIDE (ROSADO)", ""],
+    ["Horno de secado", "EQ-CB-066", "2026-02-25", "COINCIDE (ROSADO)", ""],
+    ["Campana de extracción", "EQ-CB-092", "2025-08-07", "COINCIDE (ROSADO)", "Alerta: Mantención Vencida"],
+    ["Balanza Analitica", "EQ-CB-021", "-", "DE BAJA (AZUL)", "Equipo retirado"],
+    ["Medidor NO", "EQ-LIX-010", "2026-02-01", "CÓDIGO NO COINCIDE (VERDE)", "Etiquetado físicamente como EQ-CB-152"],
+    ["Balanza digital (30kg)", "EQ-CB-243", "2026-07-15", "CÓDIGO REPETIDO (VERDE AZULADO)", "Duplicado en sistema"],
+    ["Balanza digital (30kg)", "EQ-CB-244", "2026-07-15", "CÓDIGO REPETIDO (VERDE AZULADO)", "Duplicado en sistema"],
+    ["Anemómetro", "EQ-CB-254", "-", "CÓDIGO REPETIDO (VERDE AZULADO)", "Duplicado"],
+    ["Multiparametro portatil", "SIN CODIGO", "-", "SIN CÓDIGO (NARANJO)", "Ref: EQ-CB-221"],
+    ["Alzador electrico", "SIN CODIGO", "-", "SIN CÓDIGO (NARANJO)", "Pendiente"],
+    ["Hidrolavadora GHP200", "EQ-CB-258", "SIN FECHA", "COINCIDE (ROSADO)", "Sin programar"],
+    ["Balanza Digital (30Kg)", "EQ-CB-124", "-", "DE BAJA (AZUL)", "Fuera de servicio"]
+]
+
+df = pd.DataFrame(datos_inventario, columns=["Equipo", "Código", "Próxima Mantención", "Estado", "Observación Detallada"])
+
+# --- 2. MOSTRAR LISTADO CON COLORES ---
+def aplicar_color(row):
+    color_map = {
+        'COINCIDE (ROSADO)': 'background-color: #f8bbd0; color: black',
+        'CÓDIGO REPETIDO (VERDE AZULADO)': 'background-color: #80cbc4; color: black',
+        'CÓDIGO NO COINCIDE (VERDE)': 'background-color: #c8e6c9; color: black',
+        'SIN CÓDIGO (NARANJO)': 'background-color: #ffe0b2; color: black',
+        'DE BAJA (AZUL)': 'background-color: #bbdefb; color: black'
+    }
+    return [color_map.get(row['Estado'], '')] * len(row)
+
+st.subheader("📋 Listado Detallado de Equipos")
+st.dataframe(df.style.apply(aplicar_color, axis=1), use_container_width=True)
+
+# --- 3. BOTÓN DE DESCARGA DIRECTA ---
+output = BytesIO()
+with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+    df.to_excel(writer, index=False, sheet_name='Reporte')
+    # El archivo Excel se genera con los datos listos
     
-    if 'BAJA' in obs: return 'DE BAJA (AZUL)'
-    if 'SIN CODIGO' in cod or 'FALTA CODIFICAR' in obs: return 'SIN CÓDIGO (NARANJO)'
-    if 'ETIQUETADO COMO' in obs or 'ERROR' in obs: return 'CÓDIGO NO COINCIDE (VERDE)'
-    if 'REPETIDO' in obs: return 'CÓDIGO REPETIDO (VERDE AZULADO)'
-    return 'COINCIDE (ROSADO)'
+st.download_button(
+    label="📥 Descargar Reporte en Excel para mi Jefe",
+    data=output.getvalue(),
+    file_name="Reporte_Final_TechOps.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
-df['Estado Final'] = df.apply(definir_estado_final, axis=1)
-
-# 3. GENERACIÓN DEL EXCEL CON COLORES ARREGLADOS (aRGB)
-nombre_archivo = 'Reporte_Final_TechOps_Arreglado.xlsx'
-writer = pd.ExcelWriter(nombre_archivo, engine='openpyxl')
-df.to_excel(writer, index=False, sheet_name='Auditoria Tech Ops')
-
-ws = writer.sheets['Auditoria Tech Ops']
-
-# Prefijo 'FF' añadido para evitar el error ValueError: Colors must be aRGB
-colores_argb = {
-    'COINCIDE (ROSADO)': 'FFFFC0CB',             # Rosa opaco
-    'CÓDIGO REPETIDO (VERDE AZULADO)': 'FF80CBC4',   # Verde azulado opaco
-    'CÓDIGO NO COINCIDE (VERDE)': 'FFC8E6C9',       # Verde claro opaco
-    'SIN CÓDIGO (NARANJO)': 'FFFFE0B2',             # Naranjo claro opaco
-    'DE BAJA (AZUL)': 'FFBBDEFB'                    # Azul claro opaco
-}
-
-# Aplicar el relleno de color según el estado
-for row in range(2, len(df) + 2):
-    estado = ws.cell(row=row, column=4).value # La columna 4 es 'Estado Final'
-    if estado in colores_argb:
-        color_hex = colores_argb[estado]
-        fill = PatternFill(start_color=color_hex, end_color=color_hex, fill_type='solid')
-        ws.cell(row=row, column=4).fill = fill
-
-writer.close()
-print(f"✅ ¡Éxito! Reporte generado como: {nombre_archivo}")
+st.success("El documento está listo para descargar. Contiene la identificación de duplicados y equipos de baja.")
