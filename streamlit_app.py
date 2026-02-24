@@ -1,76 +1,82 @@
 import streamlit as st
 import pandas as pd
 
-# Configuración de la página
-st.set_page_config(page_title="Tech Ops Inventory", layout="wide")
+st.set_page_config(page_title="Tech Ops Inventory Report", layout="wide")
 
-st.title("📊 Sistema de Inventario Tech Ops")
-st.markdown("Sube los archivos CSV para generar el reporte automático.")
+st.title("📋 Reporte Profesional de Inventario Tech Ops")
+st.markdown("---")
 
-# 1. Subida de archivos en la interfaz
+# Subida de archivos
 col1, col2 = st.columns(2)
 with col1:
-    file_inv = st.file_uploader("Subir archivo 'Repetidos' (CSV)", type="csv")
+    file_inv = st.file_uploader("Subir Hoja 'Repetidos'", type="csv")
 with col2:
-    file_man = st.file_uploader("Subir archivo 'Hoja 2' (CSV)", type="csv")
+    file_man = st.file_uploader("Subir 'Hoja 2' (Mantenciones)", type="csv")
 
 if file_inv and file_man:
     try:
-        # 2. Carga de datos con los saltos de línea correctos según tus archivos
-        # skiprows=9 para repetidos porque la tabla empieza en la fila 10
-        df_inventario = pd.read_csv(file_inv, skiprows=9) 
-        # skiprows=3 para Hoja2 porque la tabla empieza en la fila 4
-        df_mantencion = pd.read_csv(file_man, skiprows=3)
+        # Carga de datos
+        df_inv = pd.read_csv(file_inv, skiprows=9)
+        df_man = pd.read_csv(file_man, skiprows=3)
 
-        # Limpiar nombres de columnas (basado en tus archivos reales)
-        df_inventario.columns = ['Equipos', 'Codigos', 'Observaciones']
-        df_mantencion.columns = ['Equipos', 'Codigos_M', 'Proxima mantencion', 'Ultima mantencion', 'Extra']
+        # Limpieza inicial
+        df_inv.columns = ['Equipo', 'Codigo', 'Observaciones']
+        df_man = df_man[['Equipos', 'Proxima mantención', 'Ultima mantención']].rename(columns={'Equipos': 'Equipo'})
 
-        # 3. Unir tablas
-        df_master = pd.merge(df_inventario, df_mantencion[['Equipos', 'Proxima mantencion', 'Ultima mantencion']], on='Equipos', how='left')
+        # Cruzar información
+        df_final = pd.merge(df_inv, df_man, on='Equipo', how='left')
 
-        # 4. Función de lógica de estados (tus colores)
-        def determinar_estado(row):
-            codigo = str(row['Codigos']).strip().upper()
-            obs = str(row['Observaciones']).strip().lower()
+        # Lógica de estados según tus instrucciones
+        def asignar_estado(row):
+            obs = str(row['Observaciones']).lower()
+            cod = str(row['Codigo']).upper()
             
             if 'baja' in obs:
-                return 'De Baja (Azul)'
-            if codigo == 'SIN CODIGO' or codigo == 'NAN':
-                return 'Sin Código (Naranjo)'
+                return 'DE BAJA (AZUL)'
+            if 'sin codigo' in cod or 'nan' in str(cod).lower():
+                return 'SIN CÓDIGO (NARANJO)'
             if 'etiquetado como' in obs or 'pertenece a otro' in obs:
-                return 'No Coincide (Verde)'
-            return 'Óptimo (Rosa)'
+                return 'CÓDIGO NO COINCIDE (VERDE)'
+            return 'VALOR PREDETERMINADO'
 
-        df_master['Estado_Sugerido'] = df_master.apply(determinar_estado, axis=1)
+        df_final['Estado'] = df_final.apply(asignar_estado, axis=1)
 
-        # 5. Detectar Duplicados (Verde Azulado)
-        codigos_validos = df_master[df_master['Codigos'] != 'SIN CODIGO']
-        duplicados = codigos_validos[codigos_validos.duplicated(subset=['Codigos'], keep=False)]['Codigos'].unique()
-        df_master.loc[df_master['Codigos'].isin(duplicados), 'Estado_Sugerido'] = 'Código Repetido (Verde Azulado)'
+        # Identificar Duplicados (VERDE AZULADO)
+        # Buscamos códigos que se repiten en la lista
+        codigos_limpios = df_final[df_final['Codigo'].notna() & (df_final['Codigo'] != 'SIN CODIGO')]
+        duplicados = codigos_limpios[codigos_limpios.duplicated('Codigo', keep=False)]['Codigo'].unique()
+        
+        df_final.loc[df_final['Codigo'].isin(duplicados), 'Estado'] = 'CÓDIGO REPETIDO (VERDE AZULADO)'
+        
+        # El resto que no entró en categorías críticas es ROSADO
+        df_final.loc[df_final['Estado'] == 'VALOR PREDETERMINADO', 'Estado'] = 'COINCIDE (ROSADO)'
 
-        # 6. Aplicar Colores Visuales para la Web
-        def style_estado(val):
+        # --- REPORTE PARA EL JEFE ---
+        st.subheader("📊 Resumen Ejecutivo para Jefatura")
+        
+        metrica1, metrica2, metrica3, metrica4 = st.columns(4)
+        metrica1.metric("Total Equipos", len(df_final))
+        metrica2.metric("Sin Código", len(df_final[df_final['Estado'] == 'SIN CÓDIGO (NARANJO)']))
+        metrica3.metric("Duplicados", len(duplicados))
+        metrica4.metric("De Baja", len(df_final[df_final['Estado'] == 'DE BAJA (AZUL)']))
+
+        # Función para colorear la tabla
+        def color_estilo(val):
             color_map = {
-                'Óptimo (Rosa)': 'background-color: #fce4ec; color: black;',
-                'Código Repetido (Verde Azulado)': 'background-color: #e0f2f1; color: black;',
-                'No Coincide (Verde)': 'background-color: #e8f5e9; color: black;',
-                'Sin Código (Naranjo)': 'background-color: #fff3e0; color: black;',
-                'De Baja (Azul)': 'background-color: #e3f2fd; color: black;'
+                'COINCIDE (ROSADO)': 'background-color: #f8bbd0; color: black',
+                'CÓDIGO REPETIDO (VERDE AZULADO)': 'background-color: #80cbc4; color: black',
+                'CÓDIGO NO COINCIDE (VERDE)': 'background-color: #c8e6c9; color: black',
+                'SIN CÓDIGO (NARANJO)': 'background-color: #ffe0b2; color: black',
+                'DE BAJA (AZUL)': 'background-color: #bbdefb; color: black'
             }
             return color_map.get(val, '')
 
-        # Mostrar Tabla
-        st.subheader("📋 Reporte Consolidado")
-        st.dataframe(df_master.style.applymap(style_estado, subset=['Estado_Sugerido']), use_container_width=True)
+        st.markdown("### Detalle de Inventario Auditado")
+        st.dataframe(df_final.style.applymap(color_estilo, subset=['Estado']), use_container_width=True)
 
-        # Botón para descargar el resultado
-        csv = df_master.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Descargar Reporte en CSV", data=csv, file_name="Reporte_TechOps.csv", mime="text/csv")
+        # Botón de Descarga
+        csv_data = df_final.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Descargar Reporte Final para Excel", data=csv_data, file_name="Reporte_Final_TechOps.csv")
 
     except Exception as e:
-        st.error(f"Hubo un error procesando los archivos: {e}")
-        st.info("Asegúrate de subir los archivos correctos que mostraste anteriormente.")
-
-else:
-    st.warning("Esperando que se suban ambos archivos para procesar...")
+        st.error(f"Error en el proceso: {e}")
