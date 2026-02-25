@@ -66,7 +66,7 @@ inv_data = [
     ["Balanza Digital (124)", "EQ-CB-124", "AZUL"],
     ["Anemometro (198)", "EQ-CB-198", "VERDE AZULADO"],
     ["Multiparametro (057)", "EQ-CB-057", "VERDE AZULADO"],
-    ["Multiparametro portatil", "SIN CODIGO", "NARANJO"],
+    ["Multiparametro Portatil", "SIN CODIGO", "NARANJO"],
     ["Alzador electrico", "SIN CODIGO", "NARANJO"],
     ["Carro amarillo", "SIN CODIGO", "NARANJO"],
     ["Traspaleta", "SIN CODIGO", "NARANJO"],
@@ -84,7 +84,7 @@ def style_gen(row):
 
 st.dataframe(df_gen.style.apply(style_gen, axis=1), height=500, use_container_width=True)
 
-# --- 2. HOJA 1: DUPLICADOS Y CONFLICTOS (PARA MEJORAR) ---
+# --- 2. HOJA 1: DUPLICADOS Y CONFLICTOS ---
 st.header("2. Instrumentos Duplicados y Conflictos (Mejora de Gestión)")
 data_h1 = [
     ["Anemometro", "EQ-CB-198", "Conflicto con Balanza digital"],
@@ -105,17 +105,29 @@ data_h1 = [
 df_h1 = pd.DataFrame(data_h1, columns=["Instrumento", "Código", "Detalle Mejora"])
 st.dataframe(df_h1.style.applymap(lambda x: 'background-color: #80cbc4; color: black'), use_container_width=True)
 
-# --- 3. HOJA 2: MANTENCIONES AHORA ---
-st.header("3. Listado de Mantenciones Programadas (Hoja 2)")
+# --- 3. HOJA 2: MANTENCIONES MARZO (ACTUALIZADO) ---
+st.header("3. Listado de Mantenciones - Mes de Marzo")
 data_maint = [
-    ["Agitador Magnetico (16 pos)", "EQ-CB-023", "2026-02-25", "Vence Mañana"],
-    ["Horno de secado", "EQ-CB-066", "2026-02-25", "Vence Mañana"],
-    ["Medidor NO", "EQ-LIX-010", "2026-02-01", "VENCIDO"],
-    ["Campana de extracción", "EQ-CB-092", "2025-08-07", "VENCIDO"],
-    ["Hidrolavadora GHP200", "EQ-CB-258", "SIN FECHA", "URGENTE PROGRAMAR"],
-    ["Anemometro (198)", "EQ-CB-198", "SIN FECHA", "URGENTE PROGRAMAR"]
+    ["Agitador Magnetico (16 posiciones)", "EQ-CB-023", "2/25/2026", "N/A"],
+    ["Horno de secado", "EQ-CB-066", "2/25/2026", "N/A"],
+    ["Campana de extracción Quimica sin ducto", "EQ-CB-092", "8/7/2025", "8/7/2023"],
+    ["Multiparametro pH/ORP/ISE Meter", "EQ-CB-105", "8/1/2025", "N/A"],
+    ["Agitador Magnetico 10 posiciones", "EQ-CB-111", "2/25/2026", "N/A"],
+    ["Agitador Magnetico Pequeño", "EQ-CB-112", "2/25/2026", "N/A"],
+    ["Agitador Magnetico Pequeño", "EQ-CB-122", "2/25/2026", "N/A"],
+    ["Multiparametro pH/ORP/ISE Meter", "EQ-CB-127", "11/18/2025", "11/18/2025"],
+    ["Medidor de gases The WolfPack DSII 8 PROBEE", "EQ-CB-154", "8/5/2025", "8/28/2024"],
+    ["Refrigerador convencional", "EQ-CB-178", "2/25/2026", "N/A"],
+    ["Balanza (max 3000g - d= 0,1g)", "EQ-CB-225", "4/11/2025", "N/A"],
+    ["Balanza (Max: 6Kk / Min 1g /d=0,1g)", "EQ-CB-210", "7/11/2025", "N/A"],
+    ["Multiparametro portatil", "EQ-CB-222", "8/1/2025", "N/A"],
+    ["Medidor NO", "EQ-LIX-010", "2/1/2026", "7/24/2025"],
+    ["Multiparametro pH/ORP/ISE Meter", "EQ-CB-057", "2/25/2026", "N/A"],
+    ["Celular", "EQ-CB-237", "2/25/2026", "N/A"]
 ]
-df_maint = pd.DataFrame(data_maint, columns=["Equipo", "Código", "Fecha", "Alerta"])
+df_maint = pd.DataFrame(data_maint, columns=["Equipo", "Código", "Proxima mantención", "Ultima mantención"])
+
+# Estilo para destacar la Hoja 2
 st.dataframe(df_maint.style.applymap(lambda x: 'background-color: #80cbc4; color: black'), use_container_width=True)
 
 # --- DESCARGA ---
@@ -123,7 +135,7 @@ output = BytesIO()
 with pd.ExcelWriter(output, engine='openpyxl') as writer:
     df_gen.to_excel(writer, sheet_name='Listado_Completo', index=False)
     df_h1.to_excel(writer, sheet_name='Conflictos_Hoja1', index=False)
-    df_maint.to_excel(writer, sheet_name='Mantencion_Hoja2', index=False)
+    df_maint.to_excel(writer, sheet_name='Mantencion_Marzo', index=False)
 
 st.download_button(label="📥 Descargar Reporte Final Tech Ops (.xlsx)", data=output.getvalue(), 
-                   file_name="Auditoria_TechOps_Completo.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                   file_name="Auditoria_TechOps_Marzo.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
